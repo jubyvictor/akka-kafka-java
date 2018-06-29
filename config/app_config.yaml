@@ -1,0 +1,12 @@
+#HTTP related stuff
+http.listen.port: 8080
+
+
+
+#Kafka config
+kafka.broker_url: localhost:9092
+
+
+
+#Database config
+mongo.url: mongodb://localhost:27017
