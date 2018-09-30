@@ -1,4 +1,4 @@
-##Akka - Kafka producer consumer POC
+## Akka - Kafka producer consumer POC
 
 This is a simple project to demonstrate how to use Akka's Java API to consume messages off a Kafka topic, process it and emit it to
 another kafka topic.
