@@ -4,7 +4,7 @@ This is a simple project to demonstrate how to use Akka's Java API to consume me
 another kafka topic.
 
 The pre-requisites are having a local kafka / docker environment setup. You can either choose to run docker or kafka on 
-directly.
+your machine directly.
 
 The basic idea  is to have an event producer create a tiny message, push it to a topic, and an event processor listening
 on that topic receive that message, do some processing on it and emit it to another queue.

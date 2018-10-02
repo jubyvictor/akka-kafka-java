@@ -1,11 +1,9 @@
 package in.jubyvictor.akka.doc.enricher.actors;
 
-import akka.actor.AbstractLoggingActor;
-import akka.actor.ActorRef;
-import akka.actor.ActorSystem;
-import akka.actor.Props;
+import akka.actor.*;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
+import akka.pattern.BackoffSupervisor;
 import in.jubyvictor.akka.doc.enricher.KafkaConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
@@ -14,7 +12,7 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import java.util.Collections;
 import java.util.Properties;
 
-public class AppSupervisor extends AbstractLoggingActor {
+public class AppSupervisor extends AbstractActorWithTimers {
 
 
     private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
@@ -22,6 +20,8 @@ public class AppSupervisor extends AbstractLoggingActor {
     private final KafkaConfig kafkaConfig;
     private KafkaConsumer<String,byte[]> kafkaConsumer;
 
+    private ActorRef evtPxr;
+    private ActorRef blobReader;
 
     public AppSupervisor(ActorSystem system,KafkaConfig kafkaConfig){
         this.system = system;
@@ -49,7 +49,8 @@ public class AppSupervisor extends AbstractLoggingActor {
                     this.bootstrap();
                 })
                 .match(KafkaFailure.class, m->{
-
+                    log.info("GOT KAFKA FAILURE, SHUTTING DOWN CONSUMER");
+                    this.evtPxr.tell(new EventProcessor.Stop(), getSelf());
                 })
                 .build();
     }
@@ -64,12 +65,15 @@ public class AppSupervisor extends AbstractLoggingActor {
 
         connectToKafka(config);
 
-        ActorRef blobRdr = this.system.actorOf(BlobReader.props(), "blob-reader");
+        this.blobReader = this.getContext().actorOf(BlobReader.props(), "blob-reader");
 
-        ActorRef evtPxr = this.system.actorOf(EventProcessor.props(this.kafkaConsumer, blobRdr), "event-processor");
-        evtPxr.tell(new EventProcessor.Consume(), getSelf());
+        this.evtPxr = this.getContext().actorOf(EventProcessor.props(this.kafkaConsumer, this.blobReader), "event-processor");
+        evtPxr.tell(new KafkaPoller.Consume(), getSelf());
 
         log.info("Bootstrapped EventProcessor !");
+
+
+
     }
 
     private void connectToKafka(Properties config) {

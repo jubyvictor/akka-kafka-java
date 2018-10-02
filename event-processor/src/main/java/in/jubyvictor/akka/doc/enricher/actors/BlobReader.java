@@ -72,7 +72,7 @@ public class BlobReader extends AbstractLoggingActor {
 
     byte[] readBlob(String requestId) throws IOException {
         int r = rand.nextInt(10);
-        if( r == 7){
+        if( r == -1){
             throw new IOException();
         }
         else{
