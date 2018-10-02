@@ -47,12 +47,13 @@ public class Main {
                 KafkaConfig kafkaConfig = new KafkaConfig(consumerConfig,producerConfig,"input","output-1");
 
 
-                //Init actor system
-                final ActorSystem actorSystem;actorSystem = ActorSystem.create("akka-doc-enricher");
+                //Init actor systemz
+                final ActorSystem actorSystem = ActorSystem.create("akka-doc-enricher");
 
                 Runtime.getRuntime().addShutdownHook(new Thread(()->{ actorSystem.terminate();}));
 
-                final ActorRef supervisor = actorSystem.actorOf(AppSupervisor.props(actorSystem,kafkaConfig));
+                final ActorRef supervisor = actorSystem.actorOf(AppSupervisor.props(actorSystem,kafkaConfig),"app-supervisor");
+                LOG.info("Supervisor is @"+supervisor.path().toString());
 
                 supervisor.tell(new AppSupervisor.Bootstrap(), ActorRef.noSender());
 

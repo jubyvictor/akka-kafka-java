@@ -4,6 +4,7 @@ import akka.actor.*;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import akka.pattern.BackoffSupervisor;
+import akka.routing.RoundRobinPool;
 import in.jubyvictor.akka.doc.enricher.KafkaConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
@@ -22,6 +23,7 @@ public class AppSupervisor extends AbstractActorWithTimers {
 
     private ActorRef evtPxr;
     private ActorRef blobReader;
+    private ActorRef kafkaPoller;
 
     public AppSupervisor(ActorSystem system,KafkaConfig kafkaConfig){
         this.system = system;
@@ -49,8 +51,8 @@ public class AppSupervisor extends AbstractActorWithTimers {
                     this.bootstrap();
                 })
                 .match(KafkaFailure.class, m->{
-                    log.info("GOT KAFKA FAILURE, SHUTTING DOWN CONSUMER");
-                    this.evtPxr.tell(new EventProcessor.Stop(), getSelf());
+                    log.info("GOT KAFKA FAILURE, SHUTTING DOWN KAFKA POLLER");
+                    this.kafkaPoller.tell(new KafkaPoller.Stop(), getSelf());
                 })
                 .build();
     }
@@ -65,15 +67,14 @@ public class AppSupervisor extends AbstractActorWithTimers {
 
         connectToKafka(config);
 
-        this.blobReader = this.getContext().actorOf(BlobReader.props(), "blob-reader");
+        //Children of supervisor.
+        this.blobReader = this.getContext().actorOf(BlobReader.props().withRouter(new RoundRobinPool(20)), "routed-blob-reader");
+        this.evtPxr = this.getContext().actorOf(EventProcessor.props(this.blobReader).withRouter(new RoundRobinPool(40)), "routed-event-processor");
 
-        this.evtPxr = this.getContext().actorOf(EventProcessor.props(this.kafkaConsumer, this.blobReader), "event-processor");
-        evtPxr.tell(new KafkaPoller.Consume(), getSelf());
-
-        log.info("Bootstrapped EventProcessor !");
-
+        this.kafkaPoller = this.getContext().actorOf(KafkaPoller.props(this.kafkaConsumer, this.evtPxr), "kafka-poller");
 
 
+        log.info("Bootstrapped AppSupervisor ! "+ System.currentTimeMillis());
     }
 
     private void connectToKafka(Properties config) {

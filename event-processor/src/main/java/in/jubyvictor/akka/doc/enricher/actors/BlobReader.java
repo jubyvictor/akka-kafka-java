@@ -36,6 +36,7 @@ public class BlobReader extends AbstractLoggingActor {
     //Protocol classes
     public static class ReadBlob{
         private final String requestId;
+
         public ReadBlob(String requestId){
             this.requestId = requestId;
         }
@@ -64,6 +65,7 @@ public class BlobReader extends AbstractLoggingActor {
     public Receive createReceive() {
         return receiveBuilder()
                 .match(ReadBlob.class, m ->{
+                    //log.info("Reading blob..");
                     getSender().tell(new Blob(readBlob(m.requestId)),getSelf());
                 })
                 .build();
@@ -77,7 +79,7 @@ public class BlobReader extends AbstractLoggingActor {
         }
         else{
             if (cache == null) {
-                cache = Files.readAllBytes(Paths.get("/Users/juby/work/jvm-workspace/akka-doc-enricher/event-processor/config/app_config.yaml"));
+                cache = Files.readAllBytes(Paths.get("event-processor/config/app_config.yaml"));
             }
             return cache;
         }

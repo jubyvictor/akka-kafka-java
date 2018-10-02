@@ -19,28 +19,31 @@ import static akka.pattern.Patterns.ask;
 
 public class EventProcessor extends AbstractLoggingActor {
 
-
-
-    private final ActorRef blobReader;
     private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
-
-    private final AtomicBoolean shouldRun = new AtomicBoolean(true);
 
     private final String uuid = UUID.randomUUID().toString();
 
+    private final ActorRef blobReader;
 
-    public EventProcessor(ActorRef reader) {
-        this.blobReader = reader;
+
+    public static class HandleMessage{}
+
+
+    public EventProcessor(ActorRef blobReader) {
+        this.blobReader = blobReader;
     }
 
-    public static Props props() {
-        return Props.create(EventProcessor.class, () -> new EventProcessor(kafkaConsumer, blobReader));
+    public static Props props(ActorRef blobReader) {
+        return Props.create(EventProcessor.class, () -> new EventProcessor(blobReader));
     }
 
 
     @Override
     public Receive createReceive() {
         return receiveBuilder()
+                .match(HandleMessage.class, m -> {
+                    this.handleMessage();
+                })
                 .match(BlobReader.Blob.class, m -> {
                     this.handleBlob(m.getResult());
                 })
@@ -49,12 +52,17 @@ public class EventProcessor extends AbstractLoggingActor {
 
 
 
+    void handleMessage() {
+        //log.info("Handling message");
+        this.blobReader.tell(new BlobReader.ReadBlob(""), getSelf());
 
+    }
 
 
 
     void handleBlob(byte[] bytes) {
-        //log.info(String.format("Got %d bytes in response %s",bytes.length, uuid));
+        log.info("PXD message");
+        //log.debug(String.format("Got %d bytes in response %s",bytes.length, uuid));
     }
 
     @Override
