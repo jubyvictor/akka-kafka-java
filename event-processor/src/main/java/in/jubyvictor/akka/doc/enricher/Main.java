@@ -38,8 +38,6 @@ public class Main {
 
             if (argsOk) {
 
-
-
                 //Init kafka configs
                 Config producerConfig = readKafkaConfig("PRODUCER", parsedArgs);
                 Config consumerConfig = readKafkaConfig("CONSUMER", parsedArgs);
@@ -47,14 +45,13 @@ public class Main {
                 KafkaConfig kafkaConfig = new KafkaConfig(consumerConfig,producerConfig,"input","output-1");
 
 
-                //Init actor systemz
+                //Init actor system
                 final ActorSystem actorSystem = ActorSystem.create("akka-doc-enricher");
 
-                Runtime.getRuntime().addShutdownHook(new Thread(()->{ actorSystem.terminate();}));
+                Runtime.getRuntime().addShutdownHook(new Thread(()-> actorSystem.terminate()));
 
                 final ActorRef supervisor = actorSystem.actorOf(AppSupervisor.props(actorSystem,kafkaConfig),"app-supervisor");
-                LOG.info("Supervisor is @"+supervisor.path().toString());
-
+                //AppSupervisor spawns out all other actors and supervises its children actors.
                 supervisor.tell(new AppSupervisor.Bootstrap(), ActorRef.noSender());
 
             }
@@ -122,6 +119,7 @@ public class Main {
     }
 
     private static boolean validateArgs(Map<String, Object> parsedAgs) throws IllegalArgumentException {
+        //TODO validate args , short-circuiting.
         boolean argsAreOk = true;
 
         return argsAreOk;

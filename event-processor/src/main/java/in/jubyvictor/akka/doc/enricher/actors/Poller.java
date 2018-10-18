@@ -12,9 +12,9 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 
-//Uses a time to schedule periodic polls on the kafka broker.
+//Uses a timer to schedule periodic polls on the kafka broker.
 //Messages received during polls are sent off the event processor.
-public class KafkaPoller extends AbstractActorWithTimers {
+public class Poller extends AbstractActorWithTimers {
 
     private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
 
@@ -31,12 +31,13 @@ public class KafkaPoller extends AbstractActorWithTimers {
 
 
     public static Props props(KafkaConsumer kafkaConsumer, ActorRef eventProcessor){
-        return Props.create(KafkaPoller.class, ()-> new KafkaPoller(kafkaConsumer,eventProcessor));
+        return Props.create(Poller.class, ()-> new Poller(kafkaConsumer,eventProcessor));
     }
 
 
 
-    public KafkaPoller(KafkaConsumer kafkaConsumer, ActorRef evtProcessor){
+    public Poller(KafkaConsumer kafkaConsumer, ActorRef evtProcessor){
+        //Polls kafka every POLL_INTERVAL_MS
         this.getTimers().startSingleTimer(TICK_KEY, new InitialTick(), Duration.ofMillis(POLL_INTERVAL_MS));
         this.kafkaConsumer = kafkaConsumer;
         this.eventProcessor = evtProcessor;
@@ -61,7 +62,7 @@ public class KafkaPoller extends AbstractActorWithTimers {
                     getTimers().startPeriodicTimer(TICK_KEY, new Tick(), Duration.ofMillis(POLL_INTERVAL_MS));
                 })
                 .match(Tick.class, m -> {
-                    this.consume();
+                    this.publish();
                 })
                 .match(Stop.class, m -> {
                     log.info(String.format("Stopping Kafka poller %s.", uuid));
@@ -74,7 +75,7 @@ public class KafkaPoller extends AbstractActorWithTimers {
         this.getContext().stop(getSelf());
     }
 
-    void consume() {
+    void publish() {
         //log.info(String.format("Kafka Poller %s is polling...", uuid));
         try {
             ConsumerRecords records = kafkaConsumer.poll(POLL_TIMEOUT_MS);
@@ -82,15 +83,16 @@ public class KafkaPoller extends AbstractActorWithTimers {
                 log.info(String.format("Start = %d, Now = %d, PXD %d", startTime, System.currentTimeMillis(), count.get()));
             }
             records.forEach(rec -> {
-                //Submit to routed event processor
+                //Publish polled messages to routed event processor
                 this.eventProcessor.tell(new EventProcessor.HandleMessage(), getSelf());
                 count.getAndIncrement();
             });
+            //Commit offset on no poll errors.
+            kafkaConsumer.commitAsync();
         } catch (IllegalStateException | KafkaException e) {
             log.error(String.format("Consumer poll error : %s", e.getMessage()));
             getContext().getParent().tell(new AppSupervisor.KafkaFailure(), getSelf());
         }
-        kafkaConsumer.commitAsync();
     }
 
 }

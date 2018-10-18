@@ -34,12 +34,11 @@ public class Main {
                     String.format("key-%d",i%2),
                     String.format("val-%d",i).getBytes());
 
-            Future<RecordMetadata> future = producer.send(record, new Callback() {
-                public void onCompletion(RecordMetadata metadata, Exception e) {
+            Future<RecordMetadata> future = producer.send(record, (RecordMetadata metadata, Exception e) -> {
                     if (e != null)
                         log.warn("Send failed for record {}", record, e);
                 }
-            });
+            );
 
         }
 

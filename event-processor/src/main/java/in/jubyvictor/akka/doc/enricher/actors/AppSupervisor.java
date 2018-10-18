@@ -3,12 +3,14 @@ package in.jubyvictor.akka.doc.enricher.actors;
 import akka.actor.*;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
-import akka.pattern.BackoffSupervisor;
 import akka.routing.RoundRobinPool;
 import in.jubyvictor.akka.doc.enricher.KafkaConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 
 import java.util.Collections;
 import java.util.Properties;
@@ -20,20 +22,23 @@ public class AppSupervisor extends AbstractActorWithTimers {
     private final ActorSystem system;
     private final KafkaConfig kafkaConfig;
     private KafkaConsumer<String,byte[]> kafkaConsumer;
+    private KafkaProducer<String,byte[]> kafkaProducer;
 
     private ActorRef evtPxr;
     private ActorRef blobReader;
-    private ActorRef kafkaPoller;
+    private ActorRef poller;
+    private ActorRef publisher;
 
     public AppSupervisor(ActorSystem system,KafkaConfig kafkaConfig){
         this.system = system;
         this.kafkaConfig=kafkaConfig;
     }
 
-    //Message to bootstrap application.
+    //Message to bootstrap the application.
     public static class Bootstrap{
     }
 
+    //Message indicating a Kafka infra failure.
     public static class KafkaFailure{
     }
 
@@ -52,7 +57,7 @@ public class AppSupervisor extends AbstractActorWithTimers {
                 })
                 .match(KafkaFailure.class, m->{
                     log.info("GOT KAFKA FAILURE, SHUTTING DOWN KAFKA POLLER");
-                    this.kafkaPoller.tell(new KafkaPoller.Stop(), getSelf());
+                    this.poller.tell(new Poller.Stop(), getSelf());
                 })
                 .build();
     }
@@ -60,26 +65,40 @@ public class AppSupervisor extends AbstractActorWithTimers {
 
     void bootstrap() {
 
-        Properties config = new Properties();
-        config.put("client.id", "default-client");
-        config.put("group.id", "foo");
-        config.put("bootstrap.servers", "localhost:9092");
+        Properties consumerConfig = new Properties();
+        //TODO read from the kafka config
+        consumerConfig.put("client.id", "default-client");
+        consumerConfig.put("group.id", "foo");
+        consumerConfig.put("bootstrap.servers", "localhost:9092");
 
-        connectToKafka(config);
+        Properties producerConfig = new Properties();
+
+
+        initializeKafkaConnections(consumerConfig,producerConfig);
 
         //Children of supervisor.
-        this.blobReader = this.getContext().actorOf(BlobReader.props().withRouter(new RoundRobinPool(20)), "routed-blob-reader");
-        this.evtPxr = this.getContext().actorOf(EventProcessor.props(this.blobReader).withRouter(new RoundRobinPool(40)), "routed-event-processor");
 
-        this.kafkaPoller = this.getContext().actorOf(KafkaPoller.props(this.kafkaConsumer, this.evtPxr), "kafka-poller");
+        //Handles reading a blob from the disk , can be an external system like S3.
+        this.blobReader = this.getContext().actorOf(BlobReader.props().withRouter(new RoundRobinPool(10)), "routed-blob-reader");
+
+        this.evtPxr = this.getContext().actorOf(EventProcessor.props(this.blobReader).withRouter(new RoundRobinPool(10)), "routed-event-processor");
+
+        this.poller = this.getContext().actorOf(Poller.props(this.kafkaConsumer, this.evtPxr), "kafka-poller");
+
+        this.publisher = this.getContext().actorOf(Publisher.props(this.kafkaProducer));
 
 
         log.info("Bootstrapped AppSupervisor ! "+ System.currentTimeMillis());
     }
 
-    private void connectToKafka(Properties config) {
-        kafkaConsumer = new KafkaConsumer<>(config, new StringDeserializer(), new ByteArrayDeserializer());
-        kafkaConsumer.subscribe(Collections.singletonList(kafkaConfig.getInputTopic()));
+    private void initializeKafkaConnections(Properties consumerConfig, Properties producerConfig) {
+        //Receives message from the incoming topic
+        this.kafkaConsumer = new KafkaConsumer<>(consumerConfig, new StringDeserializer(), new ByteArrayDeserializer());
+        this.kafkaConsumer.subscribe(Collections.singletonList(kafkaConfig.getInputTopic()));
+
+        //Producer that writes out to the output topic(s).
+        this.kafkaProducer = new KafkaProducer<>(producerConfig, new StringSerializer(), new ByteArraySerializer());
+
     }
 
 

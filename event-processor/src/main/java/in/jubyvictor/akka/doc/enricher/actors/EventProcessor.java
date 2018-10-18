@@ -5,16 +5,10 @@ import akka.actor.ActorRef;
 import akka.actor.Props;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.KafkaException;
+import akka.pattern.PatternsCS;
 
-import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import static akka.pattern.Patterns.ask;
+import java.util.concurrent.CompletionStage;
 
 
 public class EventProcessor extends AbstractLoggingActor {
@@ -24,13 +18,24 @@ public class EventProcessor extends AbstractLoggingActor {
     private final String uuid = UUID.randomUUID().toString();
 
     private final ActorRef blobReader;
+    private final ActorRef publisher;
+
+    private final int READ_TIMEOUT_MS = 3000;
 
 
-    public static class HandleMessage{}
+    public static class HandleMessage {
+    }
 
 
-    public EventProcessor(ActorRef blobReader) {
+    /**
+     *
+     *
+     * @param blobReader
+     * @param publisher
+     */
+    public EventProcessor(ActorRef blobReader, ActorRef publisher) {
         this.blobReader = blobReader;
+        this.publisher = publisher;
     }
 
     public static Props props(ActorRef blobReader) {
@@ -44,26 +49,19 @@ public class EventProcessor extends AbstractLoggingActor {
                 .match(HandleMessage.class, m -> {
                     this.handleMessage();
                 })
-                .match(BlobReader.Blob.class, m -> {
-                    this.handleBlob(m.getResult());
-                })
                 .build();
     }
 
 
-
     void handleMessage() {
-        //log.info("Handling message");
-        this.blobReader.tell(new BlobReader.ReadBlob(""), getSelf());
-
+        // Asks the blob reader to read the file from the file store, waits for the response, creates a message
+        // from the response and pushes it downstream to a topic.
+        CompletionStage<Object> future = PatternsCS.ask(this.blobReader, new BlobReader.ReadBlob(""), READ_TIMEOUT_MS);
+        future.thenApply(blob -> {this.publisher.tell(blob, this.getSelf())});
     }
 
 
 
-    void handleBlob(byte[] bytes) {
-        log.info("PXD message");
-        //log.debug(String.format("Got %d bytes in response %s",bytes.length, uuid));
-    }
 
     @Override
     public void preStart() throws Exception {
