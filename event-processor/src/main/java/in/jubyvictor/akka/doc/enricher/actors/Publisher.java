@@ -13,6 +13,15 @@ public class Publisher extends AbstractLoggingActor {
     private final KafkaProducer kafkaProducer;
 
     public static class Publish {
+        private final byte[] data;
+
+        public Publish(byte[] data){
+            this.data = data;
+        }
+
+        public byte[] getData() {
+            return data;
+        }
     }
 
 
@@ -26,14 +35,13 @@ public class Publisher extends AbstractLoggingActor {
 
     @Override
     public Receive createReceive() {
-        return receiveBuilder().match(BlobReader.Blob.class, m -> {
-            this.handlePublish(m.getResult());
+        return receiveBuilder().match(Publish.class, m -> {
+            this.handlePublish(m.getData());
         }).build();
     }
 
 
     void handlePublish(byte[] bytes) {
-
         this.kafkaProducer.send(new ProducerRecord<>(getTopic(bytes), getKey(bytes), bytes));
     }
 

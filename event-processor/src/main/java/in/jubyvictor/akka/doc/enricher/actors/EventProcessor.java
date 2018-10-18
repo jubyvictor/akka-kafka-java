@@ -10,6 +10,10 @@ import akka.pattern.PatternsCS;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 
+import static  in.jubyvictor.akka.doc.enricher.actors.BlobReader.Blob;
+import static  in.jubyvictor.akka.doc.enricher.actors.BlobReader.ReadBlob;
+import static  in.jubyvictor.akka.doc.enricher.actors.Publisher.Publish;
+
 
 public class EventProcessor extends AbstractLoggingActor {
 
@@ -38,8 +42,8 @@ public class EventProcessor extends AbstractLoggingActor {
         this.publisher = publisher;
     }
 
-    public static Props props(ActorRef blobReader) {
-        return Props.create(EventProcessor.class, () -> new EventProcessor(blobReader));
+    public static Props props(ActorRef blobReader, ActorRef publisher) {
+        return Props.create(EventProcessor.class, () -> new EventProcessor(blobReader, publisher));
     }
 
 
@@ -56,8 +60,9 @@ public class EventProcessor extends AbstractLoggingActor {
     void handleMessage() {
         // Asks the blob reader to read the file from the file store, waits for the response, creates a message
         // from the response and pushes it downstream to a topic.
-        CompletionStage<Object> future = PatternsCS.ask(this.blobReader, new BlobReader.ReadBlob(""), READ_TIMEOUT_MS);
-        future.thenApply(blob -> {this.publisher.tell(blob, this.getSelf())});
+        CompletionStage<Object> future = PatternsCS.ask(this.blobReader, new ReadBlob(""), READ_TIMEOUT_MS);
+        future.thenAccept(b -> this.publisher.tell(new Publish(((Blob)b).getResult()), this.getSelf()));
+
     }
 
 
